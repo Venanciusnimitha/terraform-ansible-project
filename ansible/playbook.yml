@@ -99,3 +99,4 @@
         name: grafana-server
         enabled: true
         state: started
+
