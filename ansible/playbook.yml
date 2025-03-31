@@ -4,21 +4,29 @@
   hosts: all
   become: true
   tasks:
-    - name: Update apt packages
-      apt:
+    - name: Update system packages using dnf
+      dnf:
+        name: "*"
+        state: latest
         update_cache: yes
 
 - name: Setup App Server
-  hosts: app-server
+  hosts: appserver
   become: true
   tasks:
     - name: Install Docker and Git
-      apt:
+      dnf:
         name: "{{ item }}"
         state: present
       loop:
-        - docker.io
+        - docker
         - git
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: true
 
     - name: Install Node Exporter
       shell: |
@@ -44,7 +52,7 @@
           [Install]
           WantedBy=multi-user.target
 
-    - name: Start Node Exporter service
+    - name: Start and enable Node Exporter service
       systemd:
         name: node_exporter
         enabled: true
@@ -53,21 +61,24 @@
     - name: Clone GitHub repository
       git:
         repo: "https://github.com/Venanciusnimitha/your-repo.git"
-        dest: /home/ubuntu/app
+        dest: /home/ec2-user/app
 
     - name: Build Docker image
-      command: docker build -t my-app /home/ubuntu/app
+      command: docker build -t my-app /home/ec2-user/app
 
     - name: Run Docker container
       command: docker run -d -p 80:80 my-app
 
 - name: Setup Support Server
-  hosts: support-server
+  hosts: supportserver
   become: true
   tasks:
     - name: Install Prometheus and Grafana
-      shell: |
-        sudo apt-get install -y prometheus grafana
+      dnf:
+        name:
+          - prometheus
+          - grafana
+        state: present
 
     - name: Configure Prometheus
       copy:
@@ -77,13 +88,13 @@
         group: prometheus
         mode: '0644'
 
-    - name: Restart Prometheus
+    - name: Restart and enable Prometheus
       systemd:
         name: prometheus
         enabled: true
         state: restarted
 
-    - name: Enable Grafana service
+    - name: Start and enable Grafana service
       systemd:
         name: grafana-server
         enabled: true
