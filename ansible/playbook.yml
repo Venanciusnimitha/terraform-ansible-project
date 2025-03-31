@@ -1,0 +1,90 @@
+# ansible/playbook.yml
+---
+- name: Setup App and Support Servers
+  hosts: all
+  become: true
+  tasks:
+    - name: Update apt packages
+      apt:
+        update_cache: yes
+
+- name: Setup App Server
+  hosts: app-server
+  become: true
+  tasks:
+    - name: Install Docker and Git
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - docker.io
+        - git
+
+    - name: Install Node Exporter
+      shell: |
+        wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+        tar xvfz node_exporter-1.7.0.linux-amd64.tar.gz
+        sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+        rm -rf node_exporter-1.7.0.linux-amd64*
+      args:
+        creates: /usr/local/bin/node_exporter
+
+    - name: Create Node Exporter service
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/node_exporter
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start Node Exporter service
+      systemd:
+        name: node_exporter
+        enabled: true
+        state: started
+
+    - name: Clone GitHub repository
+      git:
+        repo: "https://github.com/Venanciusnimitha/your-repo.git"
+        dest: /home/ubuntu/app
+
+    - name: Build Docker image
+      command: docker build -t my-app /home/ubuntu/app
+
+    - name: Run Docker container
+      command: docker run -d -p 80:80 my-app
+
+- name: Setup Support Server
+  hosts: support-server
+  become: true
+  tasks:
+    - name: Install Prometheus and Grafana
+      shell: |
+        sudo apt-get install -y prometheus grafana
+
+    - name: Configure Prometheus
+      copy:
+        src: ./prometheus.yml
+        dest: /etc/prometheus/prometheus.yml
+        owner: prometheus
+        group: prometheus
+        mode: '0644'
+
+    - name: Restart Prometheus
+      systemd:
+        name: prometheus
+        enabled: true
+        state: restarted
+
+    - name: Enable Grafana service
+      systemd:
+        name: grafana-server
+        enabled: true
+        state: started
